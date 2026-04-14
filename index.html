@@ -73,6 +73,13 @@
             top: 20px;
             text-shadow: 0 0 5px black;
         }
+
+        @media (orientation: portrait) {
+            #container {
+                width: auto; /* 너비 자동 조절 */
+                height: 80vh; /* 높이를 기준으로 크기 설정 */
+            }
+        }
     </style>
     <!-- MediaPipe 라이브러리 로드 -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
