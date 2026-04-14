@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>손바닥 행성 컨트롤러</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #111;
+            color: white;
+            overflow: hidden;
+        }
+        #container {
+            position: relative;
+            width: 80vw;
+            max-width: 900px;
+            aspect-ratio: 16/9;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+        .input_video {
+            display: none; /* 비디오 요소는 숨깁니다. */
+        }
+        .output_canvas {
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1); /* 거울 모드로 좌우 반전 */
+        }
+        #planet {
+            position: absolute;
+            /* 초기 위치는 JS에서 설정합니다. */
+            width: 100px; /* 초기 크기 */
+            height: 100px;
+            background-image: url('plant.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            display: none; /* 처음에는 보이지 않게 설정 */
+            transition: width 0.1s ease, height 0.1s ease, top 0.1s ease, left 0.1s ease;
+            filter: drop-shadow(0 0 15px rgba(255, 255, 100, 0.7));
+        }
+        .explosion {
+            position: absolute;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,255,220,0.9) 30%, rgba(255,100,255,0.6) 70%, rgba(255,255,255,0) 100%);
+            animation: bigBang 0.5s ease-out forwards;
+            pointer-events: none; /* 클릭 등 이벤트 방지 */
+            transform-origin: center;
+        }
+
+        @keyframes bigBang {
+            from {
+                transform: scale(1);
+                opacity: 0.8;
+            }
+            to {
+                transform: scale(6);
+                opacity: 0;
+            }
+        }
+
+        h1 {
+            position: absolute;
+            top: 20px;
+            text-shadow: 0 0 5px black;
+        }
+    </style>
+    <!-- MediaPipe 라이브러리 로드 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+    <h1>손바닥 행성 컨트롤러</h1>
+    <p>웹캠을 켜고 양손을 화면에 보여주세요.</p>
+
+    <div id="container">
+        <video class="input_video"></video>
+        <canvas class="output_canvas"></canvas>
+        <div id="planet"></div>
+    </div>
+
+    <script type="module">
+        // --- 1. 기본 요소 가져오기 ---
+        const videoElement = document.querySelector('.input_video');
+        const canvasElement = document.querySelector('.output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const planetElement = document.getElementById('planet');
+
+        // 캔버스 크기 설정
+        function setCanvasSize() {
+            const container = document.getElementById('container');
+            canvasElement.width = container.clientWidth;
+            canvasElement.height = container.clientHeight;
+        }
+        window.addEventListener('resize', setCanvasSize);
+        setCanvasSize();
+
+        // --- 2. 손 감지 결과 처리 함수 ---
+        function onResults(results) {
+            // 캔버스 초기화 및 비디오 프레임 그리기
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            // 두 개의 손이 감지되었을 때만 로직 실행
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length === 2) {
+                planetElement.style.display = 'block'; // 행성 보이기
+
+                const hand1 = results.multiHandLandmarks[0];
+                const hand2 = results.multiHandLandmarks[1];
+
+                // 각 손의 손목 위치(landmark 0)를 기준으로 좌표 계산
+                // MediaPipe의 좌표는 0~1 사이의 정규화된 값이므로 캔버스 크기를 곱해줌
+                const hand1Pos = { x: hand1[0].x * canvasElement.width, y: hand1[0].y * canvasElement.height };
+                const hand2Pos = { x: hand2[0].x * canvasElement.width, y: hand2[0].y * canvasElement.height };
+
+                // 두 손 사이의 거리 계산 (피타고라스 정리)
+                const distance = Math.sqrt(Math.pow(hand1Pos.x - hand2Pos.x, 2) + Math.pow(hand1Pos.y - hand2Pos.y, 2));
+
+                // 두 손의 중간 지점 계산 (행성이 위치할 곳)
+                const midPoint = {
+                    x: (hand1Pos.x + hand2Pos.x) / 2,
+                    y: (hand1Pos.y + hand2Pos.y) / 2
+                };
+
+                // 행성 크기 조절 (거리에 비례하여 크기 설정, SCALE_FACTOR로 민감도 조절)
+                const SCALE_FACTOR = 0.8;
+                const planetSize = Math.max(50, distance * SCALE_FACTOR); // 최소 크기 50px
+
+                // 행성 스타일 업데이트
+                planetElement.style.width = `${planetSize}px`;
+                planetElement.style.height = `${planetSize}px`;
+                // 행성의 중심이 중간 지점에 오도록 위치 조정
+                planetElement.style.left = `${canvasElement.width - midPoint.x - planetSize / 2}px`;
+                planetElement.style.top = `${midPoint.y - planetSize / 2}px`;
+
+                // (선택) 감지된 손 모양 그리기
+                for (const landmarks of results.multiHandLandmarks) {
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
+                    drawLandmarks(canvasCtx, landmarks, { color: '#FF0000', lineWidth: 2 });
+                }
+            } else {
+                // 손이 2개가 아니면 행성 숨기기
+                // 행성이 방금까지 보였다면 폭발 효과 생성
+                if (planetElement.style.display !== 'none') {
+                    const rect = planetElement.getBoundingClientRect();
+                    const containerRect = document.getElementById('container').getBoundingClientRect();
+
+                    const explosion = document.createElement('div');
+                    explosion.className = 'explosion';
+                    explosion.style.width = `${rect.width}px`;
+                    explosion.style.height = `${rect.height}px`;
+                    // 컨테이너 기준으로 위치 재계산
+                    explosion.style.left = `${rect.left - containerRect.left}px`;
+                    explosion.style.top = `${rect.top - containerRect.top}px`;
+
+                    document.getElementById('container').appendChild(explosion);
+
+                    // 애니메이션 시간(0.5초) 후 요소 제거
+                    setTimeout(() => {
+                        const container = document.getElementById('container');
+                        if (container.contains(explosion)) {
+                            container.removeChild(explosion);
+                        }
+                    }, 500);
+                }
+                planetElement.style.display = 'none';
+            }
+            canvasCtx.restore();
+        }
+
+        // --- 3. MediaPipe Hands 초기 설정 ---
+        const hands = new Hands({
+            locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+            }
+        });
+
+        hands.setOptions({
+            maxNumHands: 2, // 최대 2개의 손을 감지
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        // --- 4. 웹캠 시작 ---
+        // 브라우저가 `getUserMedia`를 호출하면 사용자에게 권한을 요청합니다.
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({ image: videoElement });
+            },
+            width: 1280,
+            height: 720
+        });
+        camera.start();
+
+    </script>
+</body>
+</html>
